@@ -3,14 +3,14 @@
 #
 # EOF (end-of-file) token is used to indicate that
 # there is no more input left for lexical analysis
-INTEGER, PLUS, EOF = 'INTEGER', 'PLUS', 'EOF'
+INTEGER, PLUS, MINUS, EOF = 'INTEGER', 'PLUS', 'MINUS', 'EOF'
 
 
 class Token(object):
     def __init__(self, type, value):
-        # token type: INTEGER, PLUS, or EOF
+        # token type: INTEGER, PLUS, MINUS, or EOF
         self.type = type
-        # token value: 0, 1, 2. 3, 4, 5, 6, 7, 8, 9, '+', or None
+        # token value: 0, 1, 2. 3, 4, 5, 6, 7, 8, 9, '+', '-', or None
         self.value = value
 
     def __str__(self):
@@ -56,20 +56,38 @@ class Interpreter(object):
         # get a character at the position self.pos and decide
         # what token to create based on the single character
         current_char = text[self.pos]
-
-        # if the character is a digit then convert it to
+	integer_value = 0
+	integer_flag = 0
+	while current_char is " ":
+	    self.pos += 1
+	    if self.pos > len(text) - 1:
+                return Token(EOF, None)
+	    current_char = text[self.pos]
+        while (current_char is not " " and current_char.isdigit()):
+	    integer_value = integer_value*10+int(current_char)
+	    integer_flag = 1
+	    self.pos += 1
+	    if self.pos >  len(text) - 1:
+		break
+	    current_char = text[self.pos]
+	# if the character is a digit then convert it to
         # integer, create an INTEGER token, increment self.pos
         # index to point to the next character after the digit,
         # and return the INTEGER token
-        if current_char.isdigit():
-            token = Token(INTEGER, int(current_char))
-            self.pos += 1
+        #if current_char.isdigit():
+        if integer_flag == 1:
+	    token = Token(INTEGER, integer_value)
             return token
 
         if current_char == '+':
             token = Token(PLUS, current_char)
             self.pos += 1
             return token
+	
+	if current_char == '-':
+	    token = Token(MINUS, current_char)
+	    self.pos += 1
+	    return token
 
         self.error()
 
@@ -78,8 +96,9 @@ class Interpreter(object):
         # type and if they match then "eat" the current token
         # and assign the next token to the self.current_token,
         # otherwise raise an exception.
-        if self.current_token.type == token_type:
-            self.current_token = self.get_next_token()
+        if self.current_token.type in token_type:
+            if self.current_token.type is not EOF:
+	        self.current_token = self.get_next_token()
         else:
             self.error()
 
@@ -91,10 +110,12 @@ class Interpreter(object):
         # we expect the current token to be a single-digit integer
         left = self.current_token
         self.eat(INTEGER)
-
-        # we expect the current token to be a '+' token
-        op = self.current_token
-        self.eat(PLUS)
+	## we expect the current token to be a '+' token
+        #op = self.current_token
+        #self.eat(PLUS)
+	# we expect the current token to be either '+' or '-' token
+	op = self.current_token
+	self.eat([MINUS,PLUS])	
 
         # we expect the current token to be a single-digit integer
         right = self.current_token
@@ -107,7 +128,11 @@ class Interpreter(object):
         # has been successfully found and the method can just
         # return the result of adding two integers, thus
         # effectively interpreting client input
-        result = left.value + right.value
+        if op.type == PLUS:
+		result = left.value + right.value
+	if op.type == MINUS:
+		result = left.value - right.value
+        # EOF token
         return result
 
 
