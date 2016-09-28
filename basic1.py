@@ -180,13 +180,6 @@ class Interpreter(object):
                 operands.pop(idx+1)
                 operands.pop(idx+1)
                 continue
-            if PLUS in operators:
-                idx = operators.index(PLUS)
-                operators.pop(idx)
-                operands.insert(idx,Token(INTEGER,operands[idx].value+operands[idx+1].value))
-                operands.pop(idx+1)
-                operands.pop(idx+1)
-                continue
             if MINUS in operators:
                 idx = operators.index(MINUS)
                 operators.pop(idx)
@@ -194,6 +187,14 @@ class Interpreter(object):
                 operands.pop(idx+1)
                 operands.pop(idx+1)
                 continue
+            if PLUS in operators:
+                idx = operators.index(PLUS)
+                operators.pop(idx)
+                operands.insert(idx,Token(INTEGER,operands[idx].value+operands[idx+1].value))
+                operands.pop(idx+1)
+                operands.pop(idx+1)
+                continue
+
         result = operands[0].value
         return result
 
