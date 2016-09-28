@@ -3,14 +3,14 @@
 #
 # EOF (end-of-file) token is used to indicate that
 # there is no more input left for lexical analysis
-INTEGER, PLUS, MINUS, EOF = 'INTEGER', 'PLUS', 'MINUS', 'EOF'
+INTEGER, PLUS, MINUS, MULTIPLY, DIVIDE, EOF = 'INTEGER', 'PLUS', 'MINUS', 'MULTIPLY', 'DIVIDE', 'EOF'
 
 
 class Token(object):
     def __init__(self, type, value):
-        # token type: INTEGER, PLUS, MINUS, or EOF
+        # token type: INTEGER, PLUS, MINUS, MULTIPLY, DIVIDE, or EOF
         self.type = type
-        # token value: 0, 1, 2. 3, 4, 5, 6, 7, 8, 9, '+', '-', or None
+        # token value: 0, 1, 2. 3, 4, 5, 6, 7, 8, 9, '+', '-', '*', '/', or None
         self.value = value
 
     def __str__(self):
@@ -88,8 +88,18 @@ class Interpreter(object):
 	    token = Token(MINUS, current_char)
 	    self.pos += 1
 	    return token
+	
+	if current_char == '*':
+	    token = Token(MULTIPLY, current_char)
+	    self.pos += 1
+	    return token
 
-        self.error()
+	if current_char == '/':
+	    token = Token(DIVIDE, current_char)
+	    self.pos += 1
+	    return token
+        
+	self.error()
 
     def eat(self, token_type):
         # compare the current token type with the passed token
@@ -106,16 +116,16 @@ class Interpreter(object):
         """expr -> INTEGER PLUS INTEGER"""
         # set current token to the first token taken from the input
         self.current_token = self.get_next_token()
-
+        """
         # we expect the current token to be a single-digit integer
         left = self.current_token
         self.eat(INTEGER)
 	## we expect the current token to be a '+' token
         #op = self.current_token
         #self.eat(PLUS)
-	# we expect the current token to be either '+' or '-' token
+	# we expect the current token to be either of '+', '-', '*', '/' tokens
 	op = self.current_token
-	self.eat([MINUS,PLUS])	
+	self.eat([MINUS,PLUS,MULTIPLY,DIVIDE])	
 
         # we expect the current token to be a single-digit integer
         right = self.current_token
@@ -132,7 +142,59 @@ class Interpreter(object):
 		result = left.value + right.value
 	if op.type == MINUS:
 		result = left.value - right.value
+	if op.type == MULTIPLY:
+		result = left.value*right.value
+	if op.type == DIVIDE:
+		result = left.value*1.0/right.value
         # EOF token
+        """
+        next_token_type = INTEGER
+        operands = []
+        operators = []
+        ops_list = [MINUS,PLUS,MULTIPLY,DIVIDE,EOF]
+        while 1:
+            token_type = next_token_type
+            if self.current_token.type == INTEGER:
+                next_token_type = ops_list
+                operands.append(self.current_token)
+            elif self.current_token.type in ops_list:
+                if self.current_token.type == EOF:
+                    self.eat(token_type)
+                    break
+                next_token_type = INTEGER
+                operators.append(self.current_token.type)
+            self.eat(token_type)
+
+        while len(operators) > 0:
+            if DIVIDE in operators:
+                idx = operators.index(DIVIDE)
+                operators.pop(idx)
+                operands.insert(idx,Token(INTEGER,operands[idx].value*1.0/operands[idx+1].value))
+                operands.pop(idx+1)
+                operands.pop(idx+1)
+                continue
+            if MULTIPLY in operators:
+                idx = operators.index(MULTIPLY)
+                operators.pop(idx)
+                operands.insert(idx,Token(INTEGER,operands[idx].value*operands[idx+1].value))
+                operands.pop(idx+1)
+                operands.pop(idx+1)
+                continue
+            if PLUS in operators:
+                idx = operators.index(PLUS)
+                operators.pop(idx)
+                operands.insert(idx,Token(INTEGER,operands[idx].value+operands[idx+1].value))
+                operands.pop(idx+1)
+                operands.pop(idx+1)
+                continue
+            if MINUS in operators:
+                idx = operators.index(MINUS)
+                operators.pop(idx)
+                operands.insert(idx,Token(INTEGER,operands[idx].value-operands[idx+1].value))
+                operands.pop(idx+1)
+                operands.pop(idx+1)
+                continue
+        result = operands[0].value
         return result
 
 
