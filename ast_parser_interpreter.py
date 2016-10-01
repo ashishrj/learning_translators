@@ -114,14 +114,22 @@ class Lexer(object):
         ####
         self.error()
 
-class Interpreter(object):
+class AST(object):
+    pass
+
+class BinOp(AST):
+    def __init__(self,left,op,right):
+        self.left = left
+        self.op = op
+        self.right = right
+
+class Num(AST):
+    def __init__(self,value):
+        self.value = value
+
+class Parser(object):
     def __init__(self, text):
-        ## client string input, e.g. "3+5"
-        #self.text = text
-        ## self.pos is an index into self.text
-        #self.pos = 0
         self.lexer = Lexer(text)
-        # current token instance
         self.current_token = None
 
     def error(self):
@@ -141,21 +149,22 @@ class Interpreter(object):
     def factor(self):
         self.current_token = self.lexer.get_next_token()
         if self.current_token.type == LEFT_PAREN:
-            result = self.expr()
+            node = self.expr()
             self.eat(RIGHT_PAREN)
         else:
-            result = self.current_token.value
+            node = Num(self.current_token.value)
             self.eat([INTEGER,FLOAT])
-        return result
+        return node
 
     def term(self):
-        result = self.factor()
+        node = self.factor()
         while self.current_token.type in [MULTIPLY,DIVIDE]:
-            if self.current_token.type == DIVIDE:
-                result = result/self.factor()
-            else:
-                result = result*self.factor()
-        return result
+            #if self.current_token.type == DIVIDE:
+            #    result = result/self.factor()
+            #else:
+            #    result = result*self.factor()
+            node = BinOp(node,self.current_token.type,self.factor())
+        return node
 
     def expr(self):
         """
@@ -164,14 +173,49 @@ class Interpreter(object):
             term : factor ((MULTIPLY|DIVIDE) factor)*
             factor : NUMBER{FLOAT|INTEGER}|expr
         """
-        result = self.term()
+        node = self.term()
         while self.current_token.type in [PLUS,MINUS]:
-            if self.current_token.type == MINUS:
-                result -= self.term()
-            else:
-                result += self.term()
+            #if self.current_token.type == MINUS:
+            #    result -= self.term()
+            #else:
+            #    result += self.term()
+            node = BinOp(node,self.current_token.type,self.term())
         #self.eat(EOF)
-        return result
+        return node
+
+    def build_ast(self):
+        return self.expr()
+
+class NodeVisitor(object):
+    def visit(self, node):
+        method_name = 'visit_' + type(node).__name__
+        visitor = getattr(self, method_name, self.generic_visit)
+        return visitor(node)
+
+    def generic_visit(self, node):
+        raise Exception('No visit_{} method'.format(type(node).__name__))
+
+class Interpreter(NodeVisitor):
+    def __init__(self, node):
+        self.node = node
+
+    def visit_BinOp(self,node):
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+        if node.op == PLUS:
+            return left + right
+        elif node.op == MINUS:
+            return left - right
+        elif node.op == MULTIPLY:
+            return left * right
+        elif node.op == DIVIDE:
+            return left / right
+
+    def visit_Num(self,node):
+        return node.value
+
+    def evaluate(self):
+        return self.visit(self.node)
 
 def main():
     while True:
@@ -184,8 +228,9 @@ def main():
             break
         if not text:
             continue
-        interpreter = Interpreter(text)
-        result = interpreter.expr()
+        parser = Parser(text)
+        interpreter = Interpreter(parser.build_ast())
+        result = interpreter.evaluate()
         print(result)
 
 
