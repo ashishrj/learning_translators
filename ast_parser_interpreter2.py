@@ -3,8 +3,9 @@
 #
 # EOF (end-of-file) token is used to indicate that
 # there is no more input left for lexical analysis
-INTEGER, FLOAT, PLUS, MINUS, MULTIPLY, DIVIDE, LEFT_PAREN, RIGHT_PAREN, EOF = 'INTEGER', 'FLOAT', 'PLUS', 'MINUS', 'MULTIPLY', 'DIVIDE', 'LEFT_PAREN', 'RIGHT_PAREN', 'EOF'
-
+INTEGER, FLOAT, PLUS, MINUS, MULTIPLY, LEFT_PAREN, RIGHT_PAREN, EOF = 'INTEGER', 'FLOAT', 'PLUS', 'MINUS', 'MULTIPLY', 'LEFT_PAREN', 'RIGHT_PAREN', 'EOF'
+BEGIN, END, SEMI, ASSIGN, VAR, DOT, DIV = 'BEGIN', 'END', ';', ':=', 'VAR', '.', 'DIV'
+RESERVED_KEYWORDS = [BEGIN, END, DIV]
 
 class Token(object):
     def __init__(self, type, value):
@@ -37,10 +38,42 @@ class Lexer(object):
 
     def ignore_whitespaces(self):
         if self.pos < len(self.text):
-            while self.text[self.pos] == " ":
+            while self.text[self.pos] == " " or self.text[self.pos] == "\n":
                 self.pos += 1
                 if self.pos > len(self.text) - 1:
                     break
+    def peek(self):
+        text = self.text
+        if self.pos >= len(text) - 1 or text[self.pos+1] == " " or text[self.pos+1] == "\n":
+            return None
+        else:
+            return text[self.pos+1]
+
+    def num(self):
+        value_str = ""
+        text = self.text
+        current_char = text[self.pos]
+        while (current_char.isdigit() or current_char == '.'):
+            value_str = value_str + current_char
+            self.pos += 1
+            if self.pos < len(text):
+                current_char = text[self.pos]
+            else:
+                break
+        return value_str
+
+    def _id(self):
+        str_in = ""
+        text = self.text
+        current_char = text[self.pos]
+        while (current_char.isalnum() or current_char == '_'):
+            str_in = str_in + current_char.upper()
+            self.pos += 1
+            if self.pos < len(text):
+                current_char = text[self.pos]
+            else:
+                break
+        return str_in
 
     def get_next_token(self):
         """Lexical analyzer (also known as scanner or tokenizer)
@@ -83,34 +116,52 @@ class Lexer(object):
             token = Token(RIGHT_PAREN, current_char)
             self.pos += 1
             return token
-
-        value_str = ""
-        while (current_char.isdigit() or current_char == '.'):
-            value_str = value_str + current_char
+        elif current_char == ';':
+            token = Token(SEMI,';')
             self.pos += 1
-            if self.pos < len(text):
-                current_char = text[self.pos]
+            return token
+        elif current_char == ':' and self.peek() == '=':
+            token = Token(ASSIGN,':=')
+            self.pos += 2
+            return token
+        elif current_char == '.':
+            next_char = self.peek()
+            if next_char == None or next_char == ' ':
+                token = Token(DOT,'.')
+                self.pos += 1
+                return token
+            elif next_char.isdigit():
+                try:
+                    value_str = self.num()
+                    token = Token(FLOAT,float(value_str))
+                except ValueError:
+                    print "Could not convert {value_str} to a float".format(value_str)
+                    self.error()
+                return token
+        elif current_char.isdigit():
+            value_str = self.num()
+            if value_str.find('.') > -1:
+                try:
+                    value = float(value_str)
+                except ValueError:
+                    print "Could not convert {value_str} to a float".format(value_str)
+                    self.error()
+                token = Token(FLOAT, value)
+                return token
+            elif value_str[0].isdigit():
+                try:
+                    value = int(value_str)
+                except ValueError:
+                    print "Could not convert {value_str} to an Interger".format(value_str)
+                    self.error()
+                token = Token(INTEGER,value)
+                return token
+        elif current_char.isalpha() or current_char == '_':
+            value = self._id()
+            if value in RESERVED_KEYWORDS:
+                return Token(value,value)
             else:
-                break
-
-        if value_str.find('.') > -1:
-            try:
-                value = float(value_str)
-            except ValueError:
-                print "Could not convert {value_str} to a float".format(value_str)
-                self.error()
-            token = Token(FLOAT, value)
-            return token
-        elif value_str[0].isdigit():
-            try:
-                value = int(value_str)
-            except ValueError:
-                print "Could not convert {value_str} to an Interger".format(value_str)
-                self.error()
-            token = Token(INTEGER,value)
-            return token
-
-
+                return Token(VAR,value)
         ####
         self.error()
 
@@ -131,6 +182,23 @@ class UnaryOp(AST):
 class Num(AST):
     def __init__(self,value):
         self.value = value
+
+class Assign(AST):
+    def __init__(self,var,expr):
+        self.var = var
+        self.expr = expr
+
+class Var(AST):
+    def __init__(self,token):
+        self.token = token
+        self.name = token.value
+
+class CompoundStatement(AST):
+    def __init__(self):
+        self.statement_list = []
+
+class Empty(AST):
+    pass
 
 class Parser(object):
     def __init__(self, text):
@@ -158,6 +226,9 @@ class Parser(object):
         elif self.current_token.type == LEFT_PAREN:
             node = self.expr()
             self.eat(RIGHT_PAREN)
+        elif self.current_token.type == VAR:
+            node = Var(self.current_token)
+            self.eat(VAR)
         else:
             node = Num(self.current_token.value)
             self.eat([INTEGER,FLOAT])
@@ -165,7 +236,7 @@ class Parser(object):
 
     def term(self):
         node = self.factor()
-        while self.current_token.type in [MULTIPLY,DIVIDE]:
+        while self.current_token.type in [MULTIPLY,DIV]:
             #if self.current_token.type == DIVIDE:
             #    result = result/self.factor()
             #else:
@@ -190,8 +261,48 @@ class Parser(object):
         #self.eat(EOF)
         return node
 
+    def variable(self):
+        token = self.current_token
+        self.eat(VAR)
+        return Var(token)
+
+    def assign(self):
+        var = self.variable()
+        expr = self.expr()
+        return Assign(var,expr)
+
+    def statement(self):
+        if self.current_token.type == END:
+            return Empty()
+        elif self.current_token.type == BEGIN:
+            return self.compound_statement()
+        else:
+            return self.assign()
+
+    def statement_list(self):
+        statements = []
+        statements.append(self.statement())
+        if self.current_token.type == SEMI:
+            self.eat(SEMI)
+            statements.extend(self.statement_list())
+        return statements
+
+
+    def compound_statement(self):
+        self.eat(BEGIN)
+        node = CompoundStatement()
+        node.statement_list = self.statement_list()
+        self.eat(END)
+        return node
+
+    def program(self):
+        self.current_token = self.lexer.get_next_token()
+        node = self.compound_statement()
+        self.eat(DOT)
+        return node
+
     def build_ast(self):
-        return self.expr()
+        return self.program()
 
 class NodeVisitor(object):
     def visit(self, node):
@@ -205,6 +316,7 @@ class NodeVisitor(object):
 class Interpreter(NodeVisitor):
     def __init__(self, node):
         self.node = node
+        self.GLOBAL_SCOPE = {}
 
     def visit_BinOp(self,node):
         left = self.visit(node.left)
@@ -215,7 +327,7 @@ class Interpreter(NodeVisitor):
             return left - right
         elif node.op == MULTIPLY:
             return left * right
-        elif node.op == DIVIDE:
+        elif node.op == DIV:
             return left / right
 
     def visit_UnaryOp(self,node):
@@ -227,6 +339,23 @@ class Interpreter(NodeVisitor):
 
     def visit_Num(self,node):
         return node.value
+
+    def visit_CompoundStatement(self,node):
+        for i in range(len(node.statement_list)):
+            self.visit(node.statement_list[i])
+
+    def visit_Assign(self,node):
+        self.GLOBAL_SCOPE[node.var.name] = self.visit(node.expr)
+
+    def visit_Var(self,node):
+        val = self.GLOBAL_SCOPE.get(node.name)
+        if val is None:
+            raise NameError(repr(node.name))
+        else:
+            return val
+
+    def visit_Empty(self,node):
+        pass
 
     def evaluate(self):
         return self.visit(self.node)
@@ -244,8 +373,8 @@ def main():
             continue
         parser = Parser(text)
         interpreter = Interpreter(parser.build_ast())
-        result = interpreter.evaluate()
-        print(result)
+        interpreter.evaluate()
+        print interpreter.GLOBAL_SCOPE
 
 
 if __name__ == '__main__':
