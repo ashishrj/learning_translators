@@ -3,9 +3,10 @@
 #
 # EOF (end-of-file) token is used to indicate that
 # there is no more input left for lexical analysis
-INTEGER, FLOAT, PLUS, MINUS, MULTIPLY, LEFT_PAREN, RIGHT_PAREN, EOF = 'INTEGER', 'FLOAT', 'PLUS', 'MINUS', 'MULTIPLY', 'LEFT_PAREN', 'RIGHT_PAREN', 'EOF'
-BEGIN, END, SEMI, ASSIGN, VAR, DOT, DIV = 'BEGIN', 'END', ';', ':=', 'VAR', '.', 'DIV'
-RESERVED_KEYWORDS = [BEGIN, END, DIV]
+INTEGER_CONST, REAL_CONST, PLUS, MINUS, MULTIPLY, LEFT_PAREN, RIGHT_PAREN, EOF = 'INTEGER_CONST', 'REAL_CONST', 'PLUS', 'MINUS', 'MULTIPLY', 'LEFT_PAREN', 'RIGHT_PAREN', 'EOF'
+BEGIN, END, SEMI, ASSIGN, VAR, DOT, INTEGER_DIV, FLOAT_DIV = 'BEGIN', 'END', ';', ':=', 'VAR', '.', 'DIV', '/'
+PROGRAM, INTEGER, REAL, COLON, COMMA = 'PROGRAM', 'INTEGER', 'REAL', ':', ','
+ID = 'ID'
 
 class Token(object):
     def __init__(self, type, value):
@@ -27,6 +28,14 @@ class Token(object):
 
     def __repr__(self):
         return self.__str__()
+
+RESERVED_KEYWORDS = {BEGIN:Token(BEGIN,BEGIN),
+                     END:Token(END,END),
+                     PROGRAM:Token(PROGRAM,PROGRAM),
+                     VAR:Token(VAR,VAR),
+                     INTEGER_DIV:Token(INTEGER_DIV,INTEGER_DIV),
+                     INTEGER:Token(INTEGER,INTEGER),
+                     REAL:Token(REAL,REAL)}
 
 class Lexer(object):
     def __init__(self,text):
@@ -75,6 +84,15 @@ class Lexer(object):
                 break
         return str_in
 
+    def skip_comment(self):
+        text = self.text
+        current_char = text[self.pos]
+        while current_char != '}':
+            if self.pos < len(text):
+                self.pos += 1
+                current_char = text[self.pos]
+        self.pos += 1
+
     def get_next_token(self):
         """Lexical analyzer (also known as scanner or tokenizer)
         This method is responsible for breaking a sentence
@@ -89,10 +107,12 @@ class Lexer(object):
         if self.pos > len(text) - 1:
             return Token(EOF, None)
         #### Logic for ignoring whitespaces and handling multiple
-        #### digit input
+        #### digit input 
         current_char = text[self.pos]
-
-        if current_char == '+':
+        if current_char == '{':
+            self.skip_comment()
+            return self.get_next_token()
+        elif current_char == '+':
             token = Token(PLUS, current_char)
             self.pos += 1
             return token
@@ -105,7 +125,7 @@ class Lexer(object):
             self.pos += 1
             return token
         elif current_char == '/':
-            token = Token(DIVIDE, current_char)
+            token = Token(FLOAT_DIV,'/')
             self.pos += 1
             return token
         elif current_char == '(':
@@ -120,9 +140,18 @@ class Lexer(object):
             token = Token(SEMI,';')
             self.pos += 1
             return token
-        elif current_char == ':' and self.peek() == '=':
-            token = Token(ASSIGN,':=')
-            self.pos += 2
+        elif current_char == ':':
+            if self.peek() == '=':
+                token = Token(ASSIGN,':=')
+                self.pos += 2
+                return token
+            else:
+                token = Token(COLON,':')
+                self.pos += 1
+                return token
+        elif current_char == ',':
+            token = Token(COMMA,',')
+            self.pos += 1
             return token
         elif current_char == '.':
             next_char = self.peek()
@@ -133,7 +162,7 @@ class Lexer(object):
             elif next_char.isdigit():
                 try:
                     value_str = self.num()
-                    token = Token(FLOAT,float(value_str))
+                    token = Token(REAL_CONST,float(value_str))
                 except ValueError:
                     print "Could not convert {value_str} to a float".format(value_str)
                     self.error()
@@ -146,7 +175,7 @@ class Lexer(object):
                 except ValueError:
                     print "Could not convert {value_str} to a float".format(value_str)
                     self.error()
-                token = Token(FLOAT, value)
+                token = Token(REAL_CONST, value)
                 return token
             elif value_str[0].isdigit():
                 try:
@@ -154,14 +183,14 @@ class Lexer(object):
                 except ValueError:
                     print "Could not convert {value_str} to an Interger".format(value_str)
                     self.error()
-                token = Token(INTEGER,value)
+                token = Token(INTEGER_CONST,value)
                 return token
         elif current_char.isalpha() or current_char == '_':
             value = self._id()
-            if value in RESERVED_KEYWORDS:
-                return Token(value,value)
+            if value in RESERVED_KEYWORDS.keys():
+                return RESERVED_KEYWORDS[value]
             else:
-                return Token(VAR,value)
+                return Token(ID,value)
         ####
         self.error()
 
@@ -192,10 +221,20 @@ class Var(AST):
     def __init__(self,token):
         self.token = token
         self.name = token.value
+        self.type = None
 
 class CompoundStatement(AST):
     def __init__(self):
         self.statement_list = []
+
+class Declarations(AST):
+    def __init__(self):
+        self.variable_list = []
+
+class Block(AST):
+    def __init__(self,declaration,compound):
+        self.declaration = declaration
+        self.compound = compound
 
 class Empty(AST):
     pass
@@ -213,6 +252,7 @@ class Parser(object):
         # type and if they match then "eat" the current token
         # and assign the next token to the self.current_token,
         # otherwise raise an exception.
+        #print self.current_token, token_type
         if self.current_token.type in token_type:
             if token_type is not EOF:
                 self.current_token = self.lexer.get_next_token()
@@ -226,17 +266,17 @@ class Parser(object):
         elif self.current_token.type == LEFT_PAREN:
             node = self.expr()
             self.eat(RIGHT_PAREN)
-        elif self.current_token.type == VAR:
+        elif self.current_token.type == ID:
             node = Var(self.current_token)
-            self.eat(VAR)
+            self.eat(ID)
         else:
             node = Num(self.current_token.value)
-            self.eat([INTEGER,FLOAT])
+            self.eat([INTEGER_CONST,REAL_CONST])
         return node
 
     def term(self):
         node = self.factor()
-        while self.current_token.type in [MULTIPLY,DIV]:
+        while self.current_token.type in [MULTIPLY,INTEGER_DIV,FLOAT_DIV]:
             #if self.current_token.type == DIVIDE:
             #    result = result/self.factor()
             #else:
@@ -263,7 +303,7 @@ class Parser(object):
 
     def variable(self):
         token = self.current_token
-        self.eat(VAR)
+        self.eat(ID)
         return Var(token)
 
     def assign(self):
@@ -287,7 +327,6 @@ class Parser(object):
             statements.extend(self.statement_list())
         return statements
 
-
     def compound_statement(self):
         self.eat(BEGIN)
         node = CompoundStatement()
@@ -295,9 +334,38 @@ class Parser(object):
         self.eat(END)
         return node
 
+    def variable_declaration(self):
+        variable_list = []
+        variable_list.append(self.variable())
+        while self.current_token.type == COMMA:
+            self.eat(COMMA)
+            variable_list.append(self.variable())
+        self.eat(COLON)
+        type_spec = self.current_token.value
+        self.eat([INTEGER,REAL])
+        for i in range(len(variable_list)):
+            variable_list[i].type = type_spec
+        return variable_list
+
+    def declaration(self):
+        node = Declarations()
+        if self.current_token.type == VAR:
+            self.eat(VAR)
+            while self.current_token.type == ID:
+                node.variable_list.extend(self.variable_declaration())
+                self.eat(SEMI)
+        return node
+
+    def block(self):
+        declaration = self.declaration()
+        return Block(declaration,self.compound_statement())
+
     def program(self):
         self.current_token = self.lexer.get_next_token()
-        node = self.compound_statement()
+        self.eat(PROGRAM)
+        self.variable()
+        self.eat(SEMI)
+        node = self.block()
         self.eat(DOT)
         return node
 
@@ -317,6 +385,7 @@ class Interpreter(NodeVisitor):
     def __init__(self, node):
         self.node = node
         self.GLOBAL_SCOPE = {}
+        self.GLOBAL_TYPE_SPEC = {}
 
     def visit_BinOp(self,node):
         left = self.visit(node.left)
@@ -327,8 +396,12 @@ class Interpreter(NodeVisitor):
             return left - right
         elif node.op == MULTIPLY:
             return left * right
-        elif node.op == DIV:
+        elif node.op == INTEGER_DIV:
+            assert type(left)==int,"Type Mismatch, Expected Integer"
+            assert type(right) == int, "Type Mismatch, Expected Integer"
             return left / right
+        elif node.op == FLOAT_DIV:
+            return left*1.0/ right
 
     def visit_UnaryOp(self,node):
         expr = self.visit(node.expr)
@@ -336,6 +409,14 @@ class Interpreter(NodeVisitor):
             return expr
         else:
             return -(expr)
+
+    def visit_Declarations(self,node):
+        for variable in node.variable_list:
+            self.GLOBAL_TYPE_SPEC[variable.name] = variable.type
+
+    def visit_Block(self,node):
+        self.visit(node.declaration)
+        self.visit(node.compound)
 
     def visit_Num(self,node):
         return node.value
@@ -345,7 +426,18 @@ class Interpreter(NodeVisitor):
             self.visit(node.statement_list[i])
 
     def visit_Assign(self,node):
-        self.GLOBAL_SCOPE[node.var.name] = self.visit(node.expr)
+        value = self.visit(node.expr)
+        if type(value) == int:
+            expr_type = INTEGER
+        else:
+            expr_type = REAL
+        assert self.GLOBAL_TYPE_SPEC[node.var.name] == expr_type, "Type Mismatch for variable {name}".format(name = node.var.name)
+        #type_spec = self.GLOBAL_TYPE_SPEC[node.var.name]
+        #if type_spec == INTEGER:
+        #    assert type(value)==int,"Type Mismatch"
+        #else:
+        #    assert type(value)==float,"Type Mismatch"
+        self.GLOBAL_SCOPE[node.var.name] = value
 
     def visit_Var(self,node):
         val = self.GLOBAL_SCOPE.get(node.name)
@@ -375,6 +467,7 @@ def main():
         interpreter = Interpreter(parser.build_ast())
         interpreter.evaluate()
         print interpreter.GLOBAL_SCOPE
+        print interpreter.GLOBAL_TYPE_SPEC
 
 
 if __name__ == '__main__':
